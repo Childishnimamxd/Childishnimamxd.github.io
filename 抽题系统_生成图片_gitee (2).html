@@ -1,0 +1,1634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>智能抽题系统</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 { font-size: 1.5em; margin-bottom: 5px; }
+        .content { padding: 15px; }
+        .status-panel {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .status-panel.connected { background: #d4edda; border-color: #28a745; }
+        .status-panel.error { background: #f8d7da; border-color: #dc3545; }
+        .status-text { font-size: 1em; font-weight: 600; color: #856404; }
+        .status-panel.connected .status-text { color: #155724; }
+        .status-panel.error .status-text { color: #721c24; }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 20px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            touch-action: manipulation;
+        }
+        .btn-primary { background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%); color: white; }
+        .btn-success { background: linear-gradient(90deg, #11998e 0%, #38ef7d 100%); color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 15px; border-bottom: 2px solid #e9ecef; padding-bottom: 8px; }
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: #f8f9fa;
+            border-radius: 16px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-align: center;
+        }
+        .tab-btn.active { background: #4facfe; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .file-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border: 2px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .file-card:active { transform: scale(0.98); }
+        .file-card.active { border-color: #28a745; background: #d4edda; }
+        .file-info h4 { font-size: 0.95em; color: #2c3e50; margin-bottom: 3px; }
+        .file-meta { font-size: 0.75em; color: #6c757d; }
+        .upload-box {
+            background: #f8f9fa;
+            border: 3px dashed #dee2e6;
+            border-radius: 12px;
+            padding: 30px 20px;
+            text-align: center;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        .history-item {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border: 2px solid #e9ecef;
+        }
+        .history-header { display: flex; justify-content: space-between; margin-bottom: 10px; align-items: center; }
+        .history-stats { display: flex; gap: 8px; }
+        .stat-box {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .stat-box .num { font-size: 1.2em; font-weight: bold; color: #4facfe; }
+        .quiz-box { display: none; }
+        .quiz-box.show { display: block; }
+        .progress-bar { background: #e9ecef; border-radius: 8px; height: 6px; margin-bottom: 15px; }
+        .progress-fill { background: #4facfe; height: 100%; border-radius: 8px; transition: width 0.3s; }
+        .quiz-header {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+        .timer { font-size: 1.1em; font-weight: bold; }
+        .timer.warning { color: #f39c12; }
+        .timer.danger { color: #e74c3c; animation: blink 1s infinite; }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .question-box { background: white; border-radius: 12px; padding: 20px; margin-bottom: 15px; }
+        .q-num {
+            background: #4facfe;
+            color: white;
+            padding: 6px 16px;
+            border-radius: 16px;
+            display: inline-block;
+            margin-bottom: 12px;
+            font-size: 0.85em;
+        }
+        .q-text { font-size: 1.05em; line-height: 1.5; margin-bottom: 15px; }
+        .options { display: flex; flex-direction: column; gap: 8px; }
+        .option {
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 2px solid transparent;
+        }
+        .option:active { background: #e3f2fd; border-color: #4facfe; }
+        .option.selected { background: #4facfe; color: white; }
+        .option.disabled { opacity: 0.6; cursor: not-allowed; }
+        .opt-letter {
+            width: 28px;
+            height: 28px;
+            background: rgba(0,0,0,0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .result-box { display: none; text-align: center; padding: 20px 0; }
+        .result-box.show { display: block; }
+        .score-circle {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: conic-gradient(#4facfe var(--score), #e9ecef 0);
+            position: relative;
+        }
+        .score-circle::before {
+            content: '';
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            background: white;
+            border-radius: 50%;
+        }
+        .score-content { position: relative; z-index: 1; }
+        .score-num { font-size: 2em; font-weight: bold; }
+        .sync-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            left: 20px;
+            background: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            display: none;
+            align-items: center;
+            gap: 10px;
+            z-index: 1000;
+            justify-content: center;
+        }
+        .sync-toast.show { display: flex; }
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top-color: #4facfe;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .hidden { display: none !important; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; color: #495057; font-size: 0.85em; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 0.95em;
+        }
+        .result-summary {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .result-summary-item {
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+        }
+        .review-item {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 12px;
+            border-left: 4px solid;
+            text-align: left;
+        }
+        .review-item.correct { border-left-color: #28a745; background: #f0fff4; }
+        .review-item.wrong { border-left-color: #dc3545; background: #fff5f5; }
+        .error-detail {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.8em;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+        .debug-info {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            margin-top: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .gen-img-btn {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 0.85em;
+        margin-top: 10px;
+        transition: all 0.3s;
+    }
+    .gen-img-btn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .gen-img-btn:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+        transform: none;
+    }
+    .img-preview {
+        margin-top: 10px;
+        max-width: 100%;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .flomo-status {
+        margin-top: 8px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 0.8em;
+        display: none;
+    }
+    .flomo-status.success {
+        background: #d4edda;
+        color: #155724;
+        display: block;
+    }
+    .flomo-status.error {
+        background: #f8d7da;
+        color: #721c24;
+        display: block;
+    }
+    .flomo-status.loading {
+        background: #fff3cd;
+        color: #856404;
+        display: block;
+    }
+</style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 智能抽题系统</h1>
+            <p style="font-size: 0.8em; opacity: 0.9;">基于 Gitee 云同步</p>
+        </div>
+
+        <div class="content">
+            <div class="status-panel" id="statusPanel">
+                <div class="status-text" id="statusText">正在连接 Gitee...</div>
+                <div style="margin-top: 8px; font-size: 0.8em; color: #6c757d;">
+                    whaever7s / quiz-app / master
+                </div>
+            </div>
+
+            <div id="mainPanel" style="display:none;">
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('files')">📁 题库管理</button>
+                    <button class="tab-btn" onclick="switchTab('history')">📜 答题历史</button>
+                </div>
+
+                <div class="tab-content active" id="tab-files">
+                    <div id="fileList"></div>
+
+                    <div class="upload-box" onclick="selectFileInput()">
+                        <div style="font-size:2.5em;margin-bottom:8px;">📤</div>
+                        <div style="font-size: 0.95em;">点击上传 Excel 题库</div>
+                        <div style="font-size:0.75em;color:#6c757d;margin-top:5px;">支持 .xlsx / .xls</div>
+                        <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="uploadExcel(this)">
+                    </div>
+
+                    <div id="practiceSettings" class="hidden" style="background:#f8f9fa;padding:15px;border-radius:10px;">
+                        <h4 style="margin-bottom:12px;font-size:0.95em;">练习设置</h4>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+                            <div class="form-group" style="margin:0;">
+                                <label>题目数量</label>
+                                <input type="number" id="qCount" value="10" min="1">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label>每题时间(秒)</label>
+                                <input type="number" id="qTime" value="60" min="10">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>题目筛选</label>
+                            <select id="qFilter">
+                                <option value="all">全部题目（智能加权随机）</option>
+                                <option value="low">低频错题（练习次数≤2）</option>
+                                <option value="medium">中频题目（练习次数3-5）</option>
+                                <option value="high">高频题目（练习次数>5）</option>
+                                <option value="wrong">仅错题</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="startPractice()" style="width:100%;">开始练习</button>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-history">
+                    <div id="historyList"></div>
+                    <button class="btn btn-primary" onclick="loadHistory()" style="width:100%;margin-top:10px;">刷新历史记录</button>
+                </div>
+
+                </div>
+            </div>
+        </div>
+
+            <div class="quiz-box" id="quizPanel">
+                <div class="progress-bar"><div class="progress-fill" id="progressBar" style="width:0%"></div></div>
+                <div class="quiz-header">
+                    <span>题目 <span id="curQ">1</span> / <span id="totalQ">10</span></span>
+                    <span class="timer" id="timer">01:00</span>
+                </div>
+                <div class="question-box" id="questionArea"></div>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-secondary" onclick="quitQuiz()" style="flex:1;">退出</button>
+                    <button class="btn btn-primary" id="nextBtn" onclick="nextQ()" disabled style="flex:2;">下一题 →</button>
+                </div>
+            </div>
+
+            <div class="result-box" id="resultPanel">
+                <div class="score-circle" id="scoreCircle">
+                    <div class="score-content">
+                        <div class="score-num" id="scoreNum">0%</div>
+                        <div style="color:#6c757d;font-size:0.8em;">正确率</div>
+                    </div>
+                </div>
+
+                <div class="result-summary">
+                    <div class="result-summary-item">
+                        <div class="label">总用时</div>
+                        <div class="value" id="totalTime">00:00</div>
+                    </div>
+                    <div class="result-summary-item">
+                        <div class="label">平均用时</div>
+                        <div class="value" id="avgTime">0秒/题</div>
+                    </div>
+                    <div class="result-summary-item">
+                        <div class="label">正确题数</div>
+                        <div class="value" style="color:#28a745;" id="rCorrect2">0</div>
+                    </div>
+                    <div class="result-summary-item">
+                        <div class="label">错误题数</div>
+                        <div class="value" style="color:#dc3545;" id="rWrong2">0</div>
+                    </div>
+                </div>
+
+                <div id="reviewArea" style="text-align:left;margin-bottom:15px;max-height:60vh;overflow-y:auto;padding-right:5px;"></div>
+
+                <div id="saveError" class="error-detail hidden">
+                    <strong>⚠️ 同步失败</strong>
+                    <div id="saveErrorText" style="margin-top:5px;"></div>
+                    <div id="saveErrorDebug" class="debug-info hidden"></div>
+                </div>
+
+                <div style="display:flex;gap:8px;justify-content:center;margin-top:15px;">
+                    <button class="btn btn-primary" onclick="restartQuiz()">重新练习</button>
+                    <button class="btn btn-success" onclick="backToMain()">返回首页</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="sync-toast" id="syncToast">
+        <div class="spinner"></div>
+        <span id="syncText">同步中...</span>
+    </div>
+
+    <script>
+        const CONFIG = {
+            user: 'whaever7s',
+            repo: 'quiz-app',
+            token: '4a5902b8c4916744d47e0ee07cbe3a5a',
+            branch: 'master'
+        };
+
+        const API_BASE_URL = 'https://gitee.com/api/v5';
+
+        let currentFile = null;
+        let quizData = {
+            questions: [],
+            answers: [],
+            current: 0,
+            timer: null,
+            timeLeft: 60,
+            record: null
+        };
+
+        function selectFileInput() {
+            document.getElementById('fileInput').click();
+        }
+
+        async function init() {
+            console.log('正在初始化 AtomGit 连接...');
+            await testConnection();
+        }
+
+        async function testConnection() {
+            const statusPanel = document.getElementById('statusPanel');
+            const statusText = document.getElementById('statusText');
+
+            try {
+                const userRes = await giteeAPI('/user');
+                if (!userRes.ok) throw new Error(`认证失败 (${userRes.status})`);
+                const userData = await userRes.json();
+                console.log('当前用户:', userData.login);
+
+                const repoRes = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}`);
+                if (!repoRes.ok) {
+                    if (repoRes.status === 404) throw new Error('仓库不存在或无法访问');
+                    throw new Error(`仓库访问错误 (${repoRes.status})`);
+                }
+
+                
+                
+
+                statusPanel.classList.add('connected');
+                statusText.textContent = '✅ 已连接';
+                document.getElementById('mainPanel').style.display = 'block';
+
+                await loadFiles();
+                
+            } catch (e) {
+                console.error('连接错误:', e);
+                statusPanel.classList.add('error');
+                statusText.textContent = '❌ ' + e.message;
+            }
+        }
+
+        async function giteeAPI(path, options = {}, isFileOperation = false) {
+            let url = `${API_BASE_URL}${path}`;
+
+            // GET 请求需要在 URL 中添加 access_token
+            if (!options.method || options.method === 'GET') {
+                const separator = url.includes('?') ? '&' : '?';
+                url += `${separator}access_token=${CONFIG.token}`;
+            }
+
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            console.log('API:', options.method || 'GET', url.replace(CONFIG.token, '***'));
+            if (options.body) {
+                console.log('请求体:', options.body.substring(0, 200) + '...');
+            }
+
+            return fetch(url, { ...options, headers });
+        }
+
+        
+
+        function utf8ToBase64(str) {
+            try {
+                const utf8Bytes = new TextEncoder().encode(str);
+                const binaryString = Array.from(utf8Bytes, byte => String.fromCharCode(byte)).join('');
+                return btoa(binaryString);
+            } catch (e) {
+                console.error('Base64 编码错误:', e);
+                return btoa(unescape(encodeURIComponent(str)));
+            }
+        }
+
+        // 上传/更新文件 - 修复 400 错误
+        async function uploadFile(path, content, message, retryCount = 0) {
+            const maxRetries = 2;
+
+            try {
+                // 1. URL 编码文件路径
+                const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
+
+                // 2. 先检查文件是否存在，获取 sha
+                let sha = null;
+                let fileExists = false;
+                try {
+                    const checkRes = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/${encodedPath}?ref=${CONFIG.branch}`);
+                    if (checkRes.ok) {
+                        const data = await checkRes.json();
+                        console.log('检查文件返回数据:', JSON.stringify(data).substring(0, 500));
+                        // Gitee 可能返回数组（如果是目录）或对象（如果是文件）
+                        if (Array.isArray(data)) {
+                            // 如果是目录，找匹配的文件
+                            const fileName = path.split('/').pop();
+                            const fileData = data.find(f => f.name === fileName);
+                            if (fileData) {
+                                sha = fileData.sha;
+                                fileExists = true;
+                                console.log('在目录中找到文件，sha:', sha);
+                            }
+                        } else if (data.sha) {
+                            // 直接是文件对象
+                            sha = data.sha;
+                            fileExists = true;
+                            console.log('文件已存在，sha:', sha);
+                        }
+                    } else if (checkRes.status === 404) {
+                        console.log('文件不存在（404）');
+                    } else {
+                        console.log('检查文件失败:', checkRes.status);
+                    }
+                } catch (e) {
+                    console.log('文件不存在或检查失败:', e.message);
+                }
+
+                // 3. 构建 JSON 请求体（参考 Flomo 快捷指令）
+                const body = {
+                    access_token: CONFIG.token,
+                    content: utf8ToBase64(content),
+                    message: message,
+                    branch: CONFIG.branch
+                };
+
+                if (sha) {
+                    body.sha = sha;
+                }
+
+                console.log('上传文件:', path, '编码后:', encodedPath, '大小:', content.length, '字符', '存在:', fileExists);
+
+                // 4. 根据文件是否存在选择方法：新建用 POST，更新用 PUT
+                const method = fileExists ? 'PUT' : 'POST';
+                const apiPath = `/repos/${CONFIG.user}/${CONFIG.repo}/contents/${encodedPath}`;
+                console.log('API 路径:', apiPath, '方法:', method);
+
+                const res = await giteeAPI(apiPath, {
+                    method: method,
+                    body: JSON.stringify(body)
+                });
+
+                if (!res.ok) {
+                    const errText = await res.text();
+                    console.error('上传失败响应:', res.status, errText);
+                    let errMsg = '上传失败';
+                    let errDetail = '';
+                    try {
+                        const errJson = JSON.parse(errText);
+                        errMsg = errJson.message || errMsg;
+                        errDetail = JSON.stringify(errJson, null, 2);
+                    } catch(e) {
+                        errMsg = errText || errMsg;
+                        errDetail = errText;
+                    }
+                    throw new Error(`${errMsg} (状态码: ${res.status})`, { cause: errDetail });
+                }
+
+                const responseData = await res.json();
+                console.log('文件上传成功:', path);
+                return responseData;
+            } catch (e) {
+                console.error(`上传失败 (尝试 ${retryCount + 1}/${maxRetries + 1}):`, e);
+                if (retryCount < maxRetries) {
+                    await new Promise(r => setTimeout(r, (retryCount + 1) * 1000));
+                    return uploadFile(path, content, message, retryCount + 1);
+                }
+                throw e;
+            }
+        }
+
+        async function downloadFile(path) {
+            const res = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/${path}?ref=${CONFIG.branch}`);
+            if (!res.ok) {
+                if (res.status === 404) return null;
+                throw new Error(`下载失败: ${res.status}`);
+            }
+            const data = await res.json();
+            if (data.content) {
+                return decodeURIComponent(escape(atob(data.content)));
+            }
+            return null;
+        }
+
+        // 删除文件
+        async function deleteFile(path, sha, retryCount = 0) {
+            const maxRetries = 2;
+
+            try {
+                let fileSha = sha;
+                if (!fileSha) {
+                    const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
+                    const checkRes = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/${encodedPath}?ref=${CONFIG.branch}`);
+                    if (checkRes.ok) {
+                        const data = await checkRes.json();
+                        fileSha = data.sha;
+                    } else {
+                        throw new Error(`无法获取文件信息: ${checkRes.status}`);
+                    }
+                }
+
+                const body = {
+                    access_token: CONFIG.token,
+                    message: `删除文件 ${path}`,
+                    sha: fileSha,
+                    branch: CONFIG.branch
+                };
+
+                const res = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/${encodedPath}`, {
+                    method: 'DELETE',
+                    body: JSON.stringify(body)
+                });
+
+                if (!res.ok) {
+                    const errText = await res.text();
+                    let errMsg = '删除失败';
+                    try {
+                        const errJson = JSON.parse(errText);
+                        errMsg = errJson.message || errMsg;
+                    } catch(e) {
+                        errMsg = errText || errMsg;
+                    }
+                    throw new Error(`${errMsg} (状态码: ${res.status})`);
+                }
+
+                return await res.json();
+            } catch (e) {
+                console.error(`删除失败 (尝试 ${retryCount + 1}/${maxRetries + 1}):`, e);
+                if (retryCount < maxRetries) {
+                    await new Promise(r => setTimeout(r, (retryCount + 1) * 1000));
+                    return deleteFile(path, sha, retryCount + 1);
+                }
+                throw e;
+            }
+        }
+
+        async function loadFiles() {
+            showSync('加载题库中...');
+            const list = document.getElementById('fileList');
+
+            try {
+                const res = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/data/files?ref=${CONFIG.branch}`);
+
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        list.innerHTML = '<p style="text-align:center;color:#6c757d;padding:20px;">暂无题库文件</p>';
+                        hideSync();
+                        return;
+                    }
+                    throw new Error(`加载失败: ${res.status}`);
+                }
+
+                const files = await res.json();
+                const jsonFiles = files.filter(f => f.name.endsWith('.json') && f.name !== '.gitkeep');
+
+                if (jsonFiles.length === 0) {
+                    list.innerHTML = '<p style="text-align:center;color:#6c757d;padding:20px;">暂无题库文件<br>请上传 Excel 文件</p>';
+                } else {
+                    list.innerHTML = jsonFiles.map(f => {
+                        const fileName = f.name;
+                        const displayName = f.name.replace('.json','');
+                        return `
+                        <div class="file-card" id="fc-${displayName}" onclick="selectFile('${fileName}')">
+                            <div class="file-info">
+                                <h4>📄 ${displayName}</h4>
+                                <div class="file-meta">${new Date(f.last_commit_date).toLocaleDateString('zh-CN')} · ${(f.size/1024).toFixed(1)}KB</div>
+                            </div>
+                            <button class="btn btn-danger" style="padding:6px 12px;font-size:0.75em;" 
+                                onclick="event.stopPropagation(); handleDelete('${fileName}');">删除</button>
+                        </div>
+                    `}).join('');
+                }
+                hideSync();
+            } catch (e) {
+                hideSync();
+                list.innerHTML = '<p style="text-align:center;color:#dc3545;padding:20px;">加载失败: ' + e.message + '</p>';
+            }
+        }
+
+        async function loadHistory() {
+            showSync('加载历史记录...');
+            const historyList = document.getElementById('historyList');
+
+            try {
+                const res = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/data/history?ref=${CONFIG.branch}`);
+
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        historyList.innerHTML = '<p style="text-align:center;color:#6c757d;padding:20px;">暂无答题记录</p>';
+                        hideSync();
+                        return;
+                    }
+                    throw new Error(`加载失败: ${res.status}`);
+                }
+
+                const files = await res.json();
+                const historyFiles = files.filter(f => f.name.endsWith('.json') && f.name.startsWith('history_'))
+                    .sort((a, b) => new Date(b.last_commit_date) - new Date(a.last_commit_date))
+                    .slice(0, 50);
+
+                if (historyFiles.length === 0) {
+                    historyList.innerHTML = '<p style="text-align:center;color:#6c757d;padding:20px;">暂无答题记录</p>';
+                    hideSync();
+                    return;
+                }
+
+                // 加载每个历史文件的详细内容
+                const historyData = [];
+                for (const file of historyFiles) {
+                    try {
+                        const contentRes = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/data/history/${file.name}?ref=${CONFIG.branch}`);
+                        if (contentRes.ok) {
+                            const data = await contentRes.json();
+                            const content = JSON.parse(decodeURIComponent(escape(atob(data.content))));
+                            historyData.push({ ...content, fileName: file.name, sha: file.sha });
+                        }
+                    } catch (e) {
+                        console.error('加载历史文件失败:', file.name, e);
+                    }
+                }
+
+                renderHistoryList(historyData);
+                hideSync();
+            } catch (e) {
+                hideSync();
+                historyList.innerHTML = '<p style="text-align:center;color:#dc3545;padding:20px;">加载失败: ' + e.message + '</p>';
+            }
+        }
+
+        function renderHistoryList(historyData) {
+            const historyList = document.getElementById('historyList');
+
+            if (historyData.length === 0) {
+                historyList.innerHTML = '<p style="text-align:center;color:#6c757d;padding:20px;">暂无答题记录</p>';
+                return;
+            }
+
+            historyList.innerHTML = historyData.map((h, index) => {
+                const date = new Date(h.endTime || h.startTime);
+                const dateStr = date.toLocaleString('zh-CN', { 
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                });
+                const avgTime = h.duration && h.totalQuestions ? Math.round(h.duration / h.totalQuestions) : 0;
+                const accuracyColor = h.accuracy >= 80 ? '#28a745' : h.accuracy >= 60 ? '#f39c12' : '#dc3545';
+
+                return `
+                <div class="history-card" style="margin-bottom:12px;background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);overflow:hidden;">
+                    <div onclick="toggleHistoryDetail(${index})" style="padding:15px;cursor:pointer;background:linear-gradient(90deg, #f8f9fa 0%, #ffffff 100%);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <span style="font-weight:600;color:#2c3e50;font-size:1.1em;">${h.fileDisplayName || h.fileName}</span>
+                                <span style="color:#6c757d;font-size:0.85em;">${dateStr}</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:1.3em;font-weight:bold;color:${accuracyColor};">${h.accuracy}%</span>
+                                <span style="font-size:1.2em;transition:transform 0.3s;" id="history-arrow-${index}">▼</span>
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;text-align:center;">
+                            <div style="background:#f8f9fa;padding:8px;border-radius:8px;">
+                                <div style="font-size:1.2em;font-weight:bold;color:#4facfe;">${h.totalQuestions}</div>
+                                <div style="font-size:0.75em;color:#6c757d;">总题数</div>
+                            </div>
+                            <div style="background:#f8f9fa;padding:8px;border-radius:8px;">
+                                <div style="font-size:1.2em;font-weight:bold;color:#28a745;">${h.correctCount}</div>
+                                <div style="font-size:0.75em;color:#6c757d;">答对</div>
+                            </div>
+                            <div style="background:#f8f9fa;padding:8px;border-radius:8px;">
+                                <div style="font-size:1.2em;font-weight:bold;color:#dc3545;">${h.wrongCount + (h.timeoutCount || 0)}</div>
+                                <div style="font-size:0.75em;color:#6c757d;">答错</div>
+                            </div>
+                            <div style="background:#f8f9fa;padding:8px;border-radius:8px;">
+                                <div style="font-size:1.2em;font-weight:bold;color:#6c757d;">${avgTime}s</div>
+                                <div style="font-size:0.75em;color:#6c757d;">平均用时</div>
+                            </div>
+                        </div>
+                        <div style="margin-top:8px;font-size:0.8em;color:#6c757d;text-align:right;">
+                            总用时: ${formatDuration(h.duration)}
+                        </div>
+                    </div>
+                    <div id="history-detail-${index}" style="display:none;border-top:1px solid #e9ecef;background:#f8f9fa;">
+                        <div style="padding:15px;">
+                            <h4 style="margin-bottom:12px;color:#495057;">答题详情</h4>
+                            ${h.questions ? h.questions.map((q, qidx) => `
+                                <div style="margin-bottom:10px;padding:10px;background:white;border-radius:8px;border-left:4px solid ${q.isCorrect ? '#28a745' : '#dc3545'};">
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+                                        <span style="font-weight:600;color:#2c3e50;">第${qidx + 1}题</span>
+                                        <span style="color:${q.isCorrect ? '#28a745' : '#dc3545'};font-weight:600;">
+                                            ${q.isCorrect ? '✅ 正确' : q.isTimeout ? '⏰ 超时' : '❌ 错误'}
+                                        </span>
+                                    </div>
+                                    <div style="font-size:0.9em;color:#495057;margin-bottom:5px;line-height:1.4;">${escapeHtml(q.stem)}</div>
+                                    <div style="font-size:0.85em;color:#6c757d;">
+                                        你的答案: <span style="color:${q.isCorrect ? '#28a745' : '#dc3545'};font-weight:600;">${q.userAnswer}</span>
+                                        ${!q.isCorrect ? ` | 正确答案: <span style="color:#28a745;font-weight:600;">${q.correctAnswer}</span>` : ''}
+                                    </div>
+                                </div>
+                            `).join('') : '<p style="color:#6c757d;">无详细记录</p>'}
+                            <div style="margin-top:15px;text-align:right;">
+                                <button class="btn btn-danger" style="padding:6px 12px;font-size:0.8em;" 
+                                    onclick="event.stopPropagation(); deleteHistory('${h.fileName}', '${h.sha}')">删除此记录</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        function toggleHistoryDetail(index) {
+            const detail = document.getElementById(`history-detail-${index}`);
+            const arrow = document.getElementById(`history-arrow-${index}`);
+            if (detail.style.display === 'none') {
+                detail.style.display = 'block';
+                arrow.style.transform = 'rotate(180deg)';
+            } else {
+                detail.style.display = 'none';
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        async function deleteHistory(fileName, sha) {
+            if (!confirm('确定要删除这条历史记录吗？')) return;
+
+            showSync('删除中...');
+            try {
+                await deleteFile(`data/history/${fileName}`, sha);
+                await loadHistory();
+                hideSync();
+                alert('✅ 删除成功！');
+            } catch (e) {
+                hideSync();
+                alert('❌ 删除失败: ' + e.message);
+            }
+        }
+
+        async function handleDelete(fileName) {
+            console.log('删除按钮点击:', fileName);
+
+            if (!confirm(`确定要删除 "${fileName}" 吗？`)) {
+                return;
+            }
+
+            showSync('删除文件中...');
+
+            try {
+                await deleteFile(`data/files/${fileName}`, null);
+                await loadFiles();
+                document.getElementById('practiceSettings').classList.add('hidden');
+                hideSync();
+                alert('✅ 删除成功！');
+            } catch (e) {
+                hideSync();
+                console.error('删除失败:', e);
+                alert('❌ 删除失败: ' + e.message);
+            }
+        }
+
+        async function uploadExcel(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            showSync('解析文件中...');
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+                    const questions = [];
+                    const seen = new Set();
+                    for (let i = 2; i < rows.length; i++) {
+                        const row = rows[i];
+                        if (!row || row.length < 7) continue;
+
+                        const q = {
+                            stem: row[1],
+                            options: { A: row[2], B: row[3], C: row[4], D: row[5] },
+                            answer: String(row[6]).trim().toUpperCase()
+                        };
+
+                        if (q.stem && q.answer && ['A','B','C','D'].includes(q.answer) && q.options[q.answer]) {
+                            const key = q.stem.slice(0, 50);
+                            if (!seen.has(key)) {
+                                seen.add(key);
+                                questions.push(q);
+                            }
+                        }
+                    }
+
+                    if (questions.length === 0) {
+                        hideSync();
+                        alert('未找到有效题目，请检查 Excel 格式');
+                        return;
+                    }
+
+                    const fileData = {
+                        name: file.name.replace(/\.[^/.]+$/, ''),
+                        uploadTime: new Date().toISOString(),
+                        questionCount: questions.length,
+                        questions: questions,
+                        stats: {}
+                    };
+
+                    showSync('上传题库中...');
+                    await uploadFile(
+                        `data/files/${fileData.name}.json`,
+                        JSON.stringify(fileData, null, 2),
+                        `上传题库 ${fileData.name} (${questions.length}题)`
+                    );
+
+                    hideSync();
+                    alert(`✅ 上传成功！共导入 ${questions.length} 道题目`);
+                    await loadFiles();
+                } catch (err) {
+                    hideSync();
+                    alert('❌ 处理文件错误: ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        async function selectFile(filename) {
+            document.querySelectorAll('.file-card').forEach(c => c.classList.remove('active'));
+            const fileId = filename.replace('.json','');
+            document.getElementById(`fc-${fileId}`)?.classList.add('active');
+
+            showSync('加载题库中...');
+            try {
+                const content = await downloadFile(`data/files/${filename}`);
+                if (!content) {
+                    hideSync();
+                    alert('加载题库失败');
+                    return;
+                }
+
+                currentFile = JSON.parse(content);
+                document.getElementById('qCount').max = currentFile.questionCount;
+                document.getElementById('qCount').value = Math.min(10, currentFile.questionCount);
+                document.getElementById('practiceSettings').classList.remove('hidden');
+                hideSync();
+            } catch (e) {
+                hideSync();
+                alert('加载题库失败: ' + e.message);
+            }
+        }
+
+        
+
+        function formatDuration(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            if (m > 0) return `${m}分${s}秒`;
+            return `${s}秒`;
+        }
+
+        function startPractice() {
+            if (!currentFile) {
+                alert('请先选择一个题库');
+                return;
+            }
+
+            const count = parseInt(document.getElementById('qCount').value);
+            const time = parseInt(document.getElementById('qTime').value);
+            const filter = document.getElementById('qFilter').value;
+
+            let candidates = currentFile.questions.map((q, idx) => {
+                const key = q.stem.slice(0, 50);
+                const stats = currentFile.stats[key] || { freq: 0, correct: 0, wrong: 0 };
+                return { q, idx, stats, key };
+            });
+
+            switch(filter) {
+                case 'low': candidates = candidates.filter(c => c.stats.freq <= 2); break;
+                case 'medium': candidates = candidates.filter(c => c.stats.freq >= 3 && c.stats.freq <= 5); break;
+                case 'high': candidates = candidates.filter(c => c.stats.freq > 5); break;
+                case 'wrong': candidates = candidates.filter(c => c.stats.wrong > 0); break;
+            }
+
+            if (candidates.length === 0) {
+                alert('该筛选条件下没有符合条件的题目');
+                return;
+            }
+
+            if (filter === 'all') {
+                candidates.forEach(c => {
+                    let w = 100;
+                    const f = c.stats.freq;
+                    if (f >= 10) w = 10;
+                    else if (f >= 7) w = 20;
+                    else if (f >= 5) w = 40;
+                    else if (f >= 3) w = 60;
+                    if (c.stats.wrong > c.stats.correct) w = Math.min(w * 1.5, 100);
+                    c.weight = w;
+                });
+
+                const selected = [];
+                const n = Math.min(count, candidates.length);
+                for (let i = 0; i < n; i++) {
+                    const total = candidates.reduce((s, c) => s + c.weight, 0);
+                    let r = Math.random() * total;
+                    let idx = 0;
+                    for (let j = 0; j < candidates.length; j++) {
+                        r -= candidates[j].weight;
+                        if (r <= 0) { idx = j; break; }
+                    }
+                    selected.push(candidates[idx]);
+                    candidates.splice(idx, 1);
+                }
+                quizData.questions = selected.map(s => s.q);
+            } else {
+                const shuffled = candidates.sort(() => 0.5 - Math.random());
+                quizData.questions = shuffled.slice(0, count).map(c => c.q);
+            }
+
+            quizData.answers = new Array(quizData.questions.length).fill(null);
+            quizData.current = 0;
+            quizData.timeLeft = time;
+            quizData.record = {
+                fileName: currentFile.name,
+                startTime: new Date().toISOString(),
+                totalQuestions: quizData.questions.length,
+                timeLimit: time,
+                filterType: filter,
+                questions: []
+            };
+
+            document.getElementById('mainPanel').style.display = 'none';
+            document.getElementById('quizPanel').classList.add('show');
+
+            showQuestion(0);
+        }
+
+        function showQuestion(idx) {
+            quizData.current = idx;
+            const q = quizData.questions[idx];
+
+            document.getElementById('curQ').textContent = idx + 1;
+            document.getElementById('totalQ').textContent = quizData.questions.length;
+            document.getElementById('progressBar').style.width = `${(idx / quizData.questions.length) * 100}%`;
+
+            startTimer();
+
+            const area = document.getElementById('questionArea');
+            area.innerHTML = `
+                <span class="q-num">第 ${idx + 1} 题</span>
+                <div class="q-text">${escapeHtml(q.stem)}</div>
+                <div class="options" id="opts">
+                    ${['A','B','C','D'].map(opt => `
+                        <div class="option" onclick="selectAns('${opt}')" id="opt-${opt}" data-val="${opt}">
+                            <span class="opt-letter">${opt}</span>
+                            <span style="flex:1;">${escapeHtml(q.options[opt] || '')}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <div id="timeoutWarn" class="hidden" style="background:#fff3cd;color:#856404;padding:12px;border-radius:8px;text-align:center;margin-top:12px;font-size:0.9em;">
+                    ⏰ 时间到！已自动提交答案
+                </div>
+            `;
+
+            updateNextBtn();
+        }
+
+        function startTimer() {
+            if (quizData.timer) clearInterval(quizData.timer);
+
+            quizData.timeLeft = parseInt(document.getElementById('qTime').value);
+            updateTimer();
+
+            const timerEl = document.getElementById('timer');
+            timerEl.classList.remove('warning', 'danger');
+
+            quizData.timer = setInterval(() => {
+                quizData.timeLeft--;
+                updateTimer();
+
+                const warn = Math.floor(parseInt(document.getElementById('qTime').value) * 0.3);
+                const danger = Math.floor(parseInt(document.getElementById('qTime').value) * 0.15);
+
+                if (quizData.timeLeft <= danger) timerEl.className = 'timer danger';
+                else if (quizData.timeLeft <= warn) timerEl.className = 'timer warning';
+
+                if (quizData.timeLeft <= 0) handleTimeout();
+            }, 1000);
+        }
+
+        function updateTimer() {
+            const m = Math.floor(quizData.timeLeft / 60);
+            const s = quizData.timeLeft % 60;
+            document.getElementById('timer').textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        }
+
+        function handleTimeout() {
+            clearInterval(quizData.timer);
+            if (!quizData.answers[quizData.current]) quizData.answers[quizData.current] = 'TIMEOUT';
+
+            document.querySelectorAll('.option').forEach(o => {
+                o.classList.add('disabled');
+                o.onclick = null;
+            });
+            document.getElementById('timeoutWarn').classList.remove('hidden');
+            updateNextBtn();
+        }
+
+        function selectAns(ans) {
+            if (quizData.timeLeft <= 0 || quizData.answers[quizData.current]) return;
+
+            quizData.answers[quizData.current] = ans;
+            document.querySelectorAll('.option').forEach(o => {
+                o.classList.remove('selected');
+                if (o.dataset.val === ans) o.classList.add('selected');
+            });
+            updateNextBtn();
+        }
+
+        function updateNextBtn() {
+            const btn = document.getElementById('nextBtn');
+            const hasAns = quizData.answers[quizData.current] !== null;
+            const isLast = quizData.current === quizData.questions.length - 1;
+
+            btn.textContent = isLast ? (hasAns ? '提交答案 ✅' : '提交') : '下一题 →';
+            btn.disabled = !hasAns && quizData.timeLeft > 0;
+        }
+
+        function nextQ() {
+            clearInterval(quizData.timer);
+            if (quizData.current < quizData.questions.length - 1) {
+                showQuestion(quizData.current + 1);
+            } else {
+                submitQuiz();
+            }
+        }
+
+        async function submitQuiz() {
+            clearInterval(quizData.timer);
+
+            const endTime = new Date();
+            const start = new Date(quizData.record.startTime);
+            const duration = Math.floor((endTime - start) / 1000);
+
+            let correct = 0, wrong = 0, timeout = 0;
+
+            quizData.questions.forEach((q, idx) => {
+                const key = q.stem.slice(0, 50);
+                if (!currentFile.stats[key]) currentFile.stats[key] = { freq: 0, correct: 0, wrong: 0, timeout: 0 };
+
+                const s = currentFile.stats[key];
+                s.freq++;
+
+                const ans = quizData.answers[idx];
+                let isCorrect = false, isTimeout = false;
+
+                if (ans === 'TIMEOUT' || ans === null) {
+                    isTimeout = true; timeout++; s.timeout++;
+                } else if (ans === q.answer) {
+                    isCorrect = true; correct++; s.correct++;
+                } else {
+                    wrong++; s.wrong++;
+                }
+
+                quizData.record.questions.push({
+                    stem: q.stem,
+                    options: q.options,
+                    correctAnswer: q.answer,
+                    userAnswer: ans === 'TIMEOUT' || ans === null ? '超时未答' : ans,
+                    isCorrect, 
+                    isTimeout
+                });
+            });
+
+            quizData.record.endTime = endTime.toISOString();
+            quizData.record.duration = duration;
+            quizData.record.correctCount = correct;
+            quizData.record.wrongCount = wrong;
+            quizData.record.timeoutCount = timeout;
+            quizData.record.accuracy = Math.round((correct / quizData.questions.length) * 100);
+
+            showSync('保存结果中...');
+
+            document.getElementById('saveError').classList.add('hidden');
+            document.getElementById('saveErrorDebug').classList.add('hidden');
+
+            let saveErrorMsg = '';
+            let saveErrorDebug = '';
+
+            try {
+                // 1. 更新题库统计
+                console.log('开始更新题库统计...');
+                await uploadFile(
+                    `data/files/${currentFile.name}.json`,
+                    JSON.stringify(currentFile, null, 2),
+                    `更新题库统计 ${currentFile.name}`
+                );
+                console.log('题库统计更新成功');
+
+                // 2. 保存答题历史记录
+                console.log('开始保存答题历史...');
+                const historyRecord = {
+                    id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+                    fileName: currentFile.name,
+                    fileDisplayName: currentFile.name,
+                    startTime: quizData.record.startTime,
+                    endTime: quizData.record.endTime,
+                    duration: duration,
+                    totalQuestions: quizData.record.totalQuestions,
+                    correctCount: correct,
+                    wrongCount: wrong,
+                    timeoutCount: timeout,
+                    accuracy: quizData.record.accuracy,
+                    filterType: quizData.record.filterType,
+                    timeLimit: quizData.record.timeLimit,
+                    questions: quizData.record.questions.map(q => ({
+                        stem: q.stem.substring(0, 100) + (q.stem.length > 100 ? '...' : ''),
+                        correctAnswer: q.correctAnswer,
+                        userAnswer: q.userAnswer,
+                        isCorrect: q.isCorrect,
+                        isTimeout: q.isTimeout
+                    }))
+                };
+
+                const historyFileName = `history_${new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19)}_${historyRecord.id}.json`;
+                await uploadFile(
+                    `data/history/${historyFileName}`,
+                    JSON.stringify(historyRecord, null, 2),
+                    `保存答题历史 ${currentFile.name} - 正确率${historyRecord.accuracy}%`
+                );
+                console.log('答题历史保存成功:', historyFileName);
+
+                hideSync();
+            } catch (e) {
+                hideSync();
+                saveErrorMsg = e.message;
+                saveErrorDebug = `错误详情: ${e.cause || '无详细错误'}\n文件: ${currentFile.name}\n时间: ${new Date().toISOString()}\n请求路径: data/history/...json`;
+                console.error('保存失败:', e);
+                document.getElementById('saveError').classList.remove('hidden');
+                document.getElementById('saveErrorText').textContent = saveErrorMsg;
+                document.getElementById('saveErrorDebug').textContent = saveErrorDebug;
+                document.getElementById('saveErrorDebug').classList.remove('hidden');
+            }
+
+            showResults(correct, wrong, timeout, quizData.questions.length, quizData.record.questions, duration);
+        }
+
+        function showResults(correct, wrong, timeout, total, questions, duration) {
+            document.getElementById('quizPanel').classList.remove('show');
+            document.getElementById('resultPanel').classList.add('show');
+
+            const acc = Math.round((correct / total) * 100);
+            document.getElementById('scoreCircle').style.setProperty('--score', `${acc * 3.6}deg`);
+
+            let cur = 0;
+            const t = setInterval(() => {
+                cur += acc / 20;
+                if (cur >= acc) { cur = acc; clearInterval(t); }
+                document.getElementById('scoreNum').textContent = Math.round(cur) + '%';
+            }, 50);
+
+            const m = Math.floor(duration / 60);
+            const s = duration % 60;
+            document.getElementById('totalTime').textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            document.getElementById('avgTime').textContent = duration > 0 ? Math.round(duration / total) + '秒/题' : '0秒/题';
+            document.getElementById('rCorrect2').textContent = correct;
+            document.getElementById('rWrong2').textContent = wrong;
+
+            document.getElementById('reviewArea').innerHTML = questions.map((q, i) => {
+                let statusClass = q.isCorrect ? 'correct' : q.isTimeout ? 'timeout' : 'wrong';
+                let badgeText = q.isCorrect ? '✅ 正确' : q.isTimeout ? '⏰ 超时' : '❌ 错误';
+
+                // 准备题目数据用于生成图片
+                const questionData = {
+                    stem: q.stem,
+                    options: q.options,
+                    correctAnswer: q.correctAnswer
+                };
+
+                return `
+                    <div class="review-item ${statusClass}">
+                        <div class="review-header">
+                            <span class="review-title">第${i+1}题</span>
+                            <span style="padding: 4px 12px; border-radius: 12px; font-size: 0.75em; font-weight: 600; background: ${statusClass==='correct'?'#d4edda':statusClass==='timeout'?'#fff3cd':'#f8d7da'}; color: ${statusClass==='correct'?'#155724':statusClass==='timeout'?'#856404':'#721c24'};">${badgeText}</span>
+                        </div>
+                        <div style="font-size: 0.9em; color: #495057; margin-bottom: 12px; line-height: 1.5;">${escapeHtml(q.stem)}</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                            ${['A','B','C','D'].map(opt => {
+                                let optClass = 'normal';
+                                let optIcon = '';
+
+                                if (opt === q.correctAnswer) {
+                                    optClass = 'correct-answer';
+                                    optIcon = '✅ ';
+                                } else if (opt === q.userAnswer && !q.isCorrect) {
+                                    optClass = 'wrong-answer';
+                                    optIcon = '❌ ';
+                                }
+
+                                const optText = q.options && q.options[opt] ? escapeHtml(q.options[opt]) : '';
+
+                                return `
+                                    <div style="padding: 8px 10px; border-radius: 6px; font-size: 0.8em; display: flex; align-items: center; gap: 6px; ${optClass==='correct-answer'?'background: #d4edda; color: #155724; font-weight: 600; border: 1px solid #28a745;':optClass==='wrong-answer'?'background: #f8d7da; color: #721c24; border: 1px solid #dc3545;':'background: #f8f9fa; color: #6c757d;'}">
+                                        <span style="font-weight:bold;min-width:20px;">${optIcon}${opt}.</span>
+                                        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;">${optText}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #6c757d; padding-top: 8px; border-top: 1px solid #e9ecef;">
+                            <span>你的答案: ${q.userAnswer}</span>
+                            <span>正确答案: ${q.correctAnswer}</span>
+                        </div>
+                        <button class="gen-img-btn" id="genBtn-${i}" onclick='generateAndUploadImage(${JSON.stringify(questionData).replace(/'/g, "&#39;")}, ${i})'>
+                            📸 生成图片并发送到 flomo
+                        </button>
+                        <div class="flomo-status" id="flomoStatus-${i}"></div>
+                        <img class="img-preview" id="imgPreview-${i}" style="display:none;" />
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function quitQuiz() {
+            if (confirm('确定要退出吗？当前进度将不会保存')) backToMain();
+        }
+
+        function restartQuiz() {
+            document.getElementById('resultPanel').classList.remove('show');
+            document.getElementById('saveError').classList.add('hidden');
+            document.getElementById('saveErrorDebug').classList.add('hidden');
+            startPractice();
+        }
+
+        async function backToMain() {
+            document.getElementById('quizPanel').classList.remove('show');
+            document.getElementById('resultPanel').classList.remove('show');
+            document.getElementById('mainPanel').style.display = 'block';
+            document.getElementById('practiceSettings').classList.add('hidden');
+            document.getElementById('saveError').classList.add('hidden');
+            document.getElementById('saveErrorDebug').classList.add('hidden');
+
+            quizData = { questions: [], answers: [], current: 0, timer: null, timeLeft: 60, record: null };
+
+            await loadFiles();
+            
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            event.target.classList.add('active');
+            if (tab === 'history') {
+                loadHistory();
+            }
+        }
+
+        function showSync(text) {
+            document.getElementById('syncText').textContent = text;
+            document.getElementById('syncToast').classList.add('show');
+        }
+
+        function hideSync() {
+            document.getElementById('syncToast').classList.remove('show');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        window.addEventListener('load', init);
+    
+        // 确保目录存在
+        async function ensureDir(name) {
+            try {
+                const filePath = `data/${name}/.gitkeep`;
+                const checkRes = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/${filePath}?ref=${CONFIG.branch}`);
+
+                if (checkRes.status === 404) {
+                    console.log('创建目录:', name);
+                    const body = {
+                        message: `初始化 ${name} 目录`,
+                        content: utf8ToBase64(''),
+                        branch: CONFIG.branch
+                    };
+
+                    await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/${filePath}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(body)
+                    });
+                }
+            } catch (e) {
+                console.log('ensureDir 错误:', e.message);
+            }
+        }
+
+        // 生成图片并上传到 pig 文件夹
+        async function generateAndUploadImage(questionData, index) {
+            const btn = document.getElementById(`genBtn-${index}`);
+            const statusDiv = document.getElementById(`flomoStatus-${index}`);
+
+            btn.disabled = true;
+            statusDiv.className = 'flomo-status loading';
+            statusDiv.textContent = '正在生成图片...';
+            statusDiv.style.display = 'block';
+
+            try {
+                // 0. 确保 pig 目录存在
+                await ensureDir('pig');
+
+                // 1. 创建临时容器用于生成图片
+                const tempDiv = document.createElement('div');
+                tempDiv.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 800px;
+                    padding: 40px;
+                    background: white;
+                    font-family: 'Segoe UI', 'PingFang SC', sans-serif;
+                    color: #333;
+                    z-index: 9999;
+                    visibility: visible;
+                    opacity: 1;
+                `;
+
+                // 构建题目内容
+                const optionsHtml = ['A','B','C','D'].map(opt => {
+                    const isCorrect = opt === questionData.correctAnswer;
+                    const bgColor = isCorrect ? '#d4edda' : '#f8f9fa';
+                    const borderColor = isCorrect ? '#28a745' : '#dee2e6';
+                    const icon = isCorrect ? '✅ ' : '';
+                    const optText = questionData.options && questionData.options[opt] ? questionData.options[opt] : '';
+
+                    return `
+                        <div style="
+                            padding: 12px 16px;
+                            margin: 8px 0;
+                            background: ${bgColor};
+                            border: 2px solid ${borderColor};
+                            border-radius: 8px;
+                            font-size: 16px;
+                            line-height: 1.5;
+                        ">
+                            <strong>${icon}${opt}.</strong> ${escapeHtml(optText)}
+                        </div>
+                    `;
+                }).join('');
+
+                tempDiv.innerHTML = `
+                    <div style="margin-bottom: 20px;">
+                        <span style="
+                            background: #4facfe;
+                            color: white;
+                            padding: 6px 16px;
+                            border-radius: 16px;
+                            font-size: 14px;
+                            font-weight: 600;
+                        ">题目</span>
+                    </div>
+                    <div style="
+                        font-size: 18px;
+                        line-height: 1.6;
+                        margin-bottom: 20px;
+                        color: #2c3e50;
+                    ">${escapeHtml(questionData.stem)}</div>
+                    <div style="margin-top: 20px;">
+                        ${optionsHtml}
+                    </div>
+                    <div style="
+                        margin-top: 24px;
+                        padding-top: 16px;
+                        border-top: 2px solid #e9ecef;
+                        font-size: 14px;
+                        color: #6c757d;
+                    ">
+                        正确答案: <strong style="color: #28a745;">${questionData.correctAnswer}</strong>
+                    </div>
+                `;
+
+                document.body.appendChild(tempDiv);
+
+                // 2. 等待 DOM 渲染完成
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // 3. 使用 html2canvas 生成图片
+                statusDiv.textContent = '正在渲染图片...';
+                const canvas = await html2canvas(tempDiv, {
+                    scale: 2,
+                    backgroundColor: '#ffffff',
+                    logging: false,
+                    useCORS: true,
+                    allowTaint: true
+                });
+
+                document.body.removeChild(tempDiv);
+
+                // 3. 转换为 base64
+                const imageData = canvas.toDataURL('image/png').split(',')[1];
+
+                // 4. 上传到 pig 文件夹
+                statusDiv.textContent = '正在上传...';
+                const timestamp = Date.now();
+                const fileName = `question_${timestamp}_${index}.png`;
+                const filePath = `pig/${fileName}`;
+
+                await uploadFile(filePath, imageData, `上传题目图片 ${fileName}`);
+
+                // 5. 获取图片链接
+                const imageUrl = `https://gitee.com/api/v5/repos/${CONFIG.user}/${CONFIG.repo}/contents/${filePath}?ref=${CONFIG.branch}`;
+
+                // 6. 发送到 flomo
+                statusDiv.textContent = '正在发送到 flomo...';
+                await sendToFlomo(imageUrl);
+
+                statusDiv.className = 'flomo-status success';
+                statusDiv.textContent = '✅ 已生成并发送到 flomo';
+
+                // 显示预览
+                const preview = document.getElementById(`imgPreview-${index}`);
+                preview.src = `data:image/png;base64,${imageData}`;
+                preview.style.display = 'block';
+
+            } catch (e) {
+                console.error('生成图片失败:', e);
+                statusDiv.className = 'flomo-status error';
+                statusDiv.textContent = '❌ ' + e.message;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // 发送到 flomo
+        async function sendToFlomo(imageUrl) {
+            const flomoApiUrl = 'https://flomoapp.com/iwh/Mzg1NDMw/854c6f80bfb50346dd23afb0f7f522d3/';
+
+            console.log('发送到 flomo:', imageUrl);
+
+            const response = await fetch(flomoApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    file_urls: [imageUrl]
+                })
+            });
+
+            const responseText = await response.text();
+            console.log('flomo 响应:', response.status, responseText);
+
+            if (!response.ok) {
+                throw new Error(`flomo API 错误: ${response.status} - ${responseText}`);
+            }
+
+            try {
+                return JSON.parse(responseText);
+            } catch (e) {
+                return { success: true, text: responseText };
+            }
+        }
+    </script>
+</body>
+</html>
