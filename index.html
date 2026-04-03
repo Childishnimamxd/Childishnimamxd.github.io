@@ -377,8 +377,11 @@
                 </div>
 
                 <div class="tab-content" id="tab-history">
+                    <div style="display:flex;gap:10px;margin-bottom:15px;">
+                        <button class="btn btn-primary" onclick="loadHistory()" style="flex:1;">刷新历史记录</button>
+                        <button class="btn btn-danger" onclick="clearAllHistory()" style="flex:1;">清空做题历史</button>
+                    </div>
                     <div id="historyList"></div>
-                    <button class="btn btn-primary" onclick="loadHistory()" style="width:100%;margin-top:10px;">刷新历史记录</button>
                 </div>
 
                 </div>
@@ -654,9 +657,10 @@
             const maxRetries = 2;
 
             try {
+                const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
                 let fileSha = sha;
+
                 if (!fileSha) {
-                    const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
                     const checkRes = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/${encodedPath}?ref=${CONFIG.branch}`);
                     if (checkRes.ok) {
                         const data = await checkRes.json();
@@ -723,19 +727,67 @@
                 if (jsonFiles.length === 0) {
                     list.innerHTML = '<p style="text-align:center;color:#6c757d;padding:20px;">暂无题库文件<br>请上传 Excel 文件</p>';
                 } else {
-                    list.innerHTML = jsonFiles.map(f => {
-                        const fileName = f.name;
-                        const displayName = f.name.replace('.json','');
-                        return `
-                        <div class="file-card" id="fc-${displayName}" onclick="selectFile('${fileName}')">
-                            <div class="file-info">
-                                <h4>📄 ${displayName}</h4>
-                                <div class="file-meta">${new Date(f.last_commit_date).toLocaleDateString('zh-CN')} · ${(f.size/1024).toFixed(1)}KB</div>
+                    // 加载每个文件的统计信息
+                const filesWithStats = [];
+                for (const f of jsonFiles) {
+                    try {
+                        const content = await downloadFile(`data/files/${f.name}`);
+                        if (content) {
+                            const data = JSON.parse(content);
+                            const stats = data.stats || {};
+                            const totalQuestions = data.questions ? data.questions.length : 0;
+
+                            let doneCount = 0;
+                            let neverDoneCount = 0;
+
+                            if (totalQuestions > 0) {
+                                data.questions.forEach(q => {
+                                    const key = q.stem.slice(0, 50);
+                                    const qStats = stats[key];
+                                    if (qStats && qStats.freq > 0) {
+                                        doneCount++;
+                                    } else {
+                                        neverDoneCount++;
+                                    }
+                                });
+                            }
+
+                            filesWithStats.push({
+                                ...f,
+                                displayName: f.name.replace('.json',''),
+                                totalQuestions,
+                                doneCount,
+                                neverDoneCount
+                            });
+                        }
+                    } catch (e) {
+                        console.error('加载文件统计失败:', f.name, e);
+                        filesWithStats.push({
+                            ...f,
+                            displayName: f.name.replace('.json',''),
+                            totalQuestions: 0,
+                            doneCount: 0,
+                            neverDoneCount: 0
+                        });
+                    }
+                }
+
+                list.innerHTML = filesWithStats.map(f => `
+                    <div class="file-card" id="fc-${f.displayName}" onclick="selectFile('${f.name}')">
+                        <div class="file-info">
+                            <h4>📄 ${f.displayName}</h4>
+                            <div class="file-meta" style="display:flex;gap:12px;margin-top:6px;">
+                                <span style="color:#28a745;font-weight:600;">已做: ${f.doneCount}</span>
+                                <span style="color:#6c757d;">|</span>
+                                <span style="color:#dc3545;font-weight:600;">未做: ${f.neverDoneCount}</span>
+                                <span style="color:#6c757d;">|</span>
+                                <span style="color:#4facfe;">共: ${f.totalQuestions}</span>
                             </div>
-                            <button class="btn btn-danger" style="padding:6px 12px;font-size:0.75em;" 
-                                onclick="event.stopPropagation(); handleDelete('${fileName}');">删除</button>
                         </div>
-                    `}).join('');
+                        <button class="btn btn-danger" style="padding:6px 12px;font-size:0.75em;" 
+                            onclick="event.stopPropagation(); handleDelete('${f.name}');">删除</button>
+                    </div>
+                `).join('');
                 }
                 hideSync();
             } catch (e) {
@@ -848,21 +900,50 @@
                     <div id="history-detail-${index}" style="display:none;border-top:1px solid #e9ecef;background:#f8f9fa;">
                         <div style="padding:15px;">
                             <h4 style="margin-bottom:12px;color:#495057;">答题详情</h4>
-                            ${h.questions ? h.questions.map((q, qidx) => `
-                                <div style="margin-bottom:10px;padding:10px;background:white;border-radius:8px;border-left:4px solid ${q.isCorrect ? '#28a745' : '#dc3545'};">
-                                    <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+                            ${h.questions ? h.questions.map((q, qidx) => {
+                                const optionsHtml = q.options ? ['A','B','C','D'].map(opt => {
+                                    const isCorrect = opt === q.correctAnswer;
+                                    const isUserChoice = opt === q.userAnswer;
+                                    let bgColor = '#f8f9fa';
+                                    let borderColor = '#dee2e6';
+                                    let icon = '';
+
+                                    if (isCorrect) {
+                                        bgColor = '#d4edda';
+                                        borderColor = '#28a745';
+                                        icon = '✅ ';
+                                    } else if (isUserChoice && !q.isCorrect) {
+                                        bgColor = '#f8d7da';
+                                        borderColor = '#dc3545';
+                                        icon = '❌ ';
+                                    }
+
+                                    const optText = q.options[opt] || '';
+                                    return `
+                                        <div style="padding:8px 10px;margin:4px 0;background:${bgColor};border:1px solid ${borderColor};border-radius:6px;font-size:0.85em;">
+                                            <strong>${icon}${opt}.</strong> ${escapeHtml(optText)}
+                                        </div>
+                                    `;
+                                }).join('') : '';
+
+                                return `
+                                <div style="margin-bottom:12px;padding:12px;background:white;border-radius:8px;border-left:4px solid ${q.isCorrect ? '#28a745' : '#dc3545'};">
+                                    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
                                         <span style="font-weight:600;color:#2c3e50;">第${qidx + 1}题</span>
                                         <span style="color:${q.isCorrect ? '#28a745' : '#dc3545'};font-weight:600;">
                                             ${q.isCorrect ? '✅ 正确' : q.isTimeout ? '⏰ 超时' : '❌ 错误'}
                                         </span>
                                     </div>
-                                    <div style="font-size:0.9em;color:#495057;margin-bottom:5px;line-height:1.4;">${escapeHtml(q.stem)}</div>
-                                    <div style="font-size:0.85em;color:#6c757d;">
+                                    <div style="font-size:0.95em;color:#2c3e50;margin-bottom:10px;line-height:1.6;word-wrap:break-word;white-space:pre-wrap;">${escapeHtml(q.stem)}</div>
+                                    <div style="margin-bottom:10px;word-wrap:break-word;">${optionsHtml}</div>
+                                    <div style="font-size:0.85em;color:#6c757d;padding-top:8px;border-top:1px solid #e9ecef;">
                                         你的答案: <span style="color:${q.isCorrect ? '#28a745' : '#dc3545'};font-weight:600;">${q.userAnswer}</span>
-                                        ${!q.isCorrect ? ` | 正确答案: <span style="color:#28a745;font-weight:600;">${q.correctAnswer}</span>` : ''}
+                                        <span style="margin:0 8px;">|</span>
+                                        正确答案: <span style="color:#28a745;font-weight:600;">${q.correctAnswer}</span>
                                     </div>
                                 </div>
-                            `).join('') : '<p style="color:#6c757d;">无详细记录</p>'}
+                                `;
+                            }).join('') : '<p style="color:#6c757d;">无详细记录</p>'}
                             <div style="margin-top:15px;text-align:right;">
                                 <button class="btn btn-danger" style="padding:6px 12px;font-size:0.8em;" 
                                     onclick="event.stopPropagation(); deleteHistory('${h.fileName}', '${h.sha}')">删除此记录</button>
@@ -898,6 +979,60 @@
             } catch (e) {
                 hideSync();
                 alert('❌ 删除失败: ' + e.message);
+            }
+        }
+
+        async function clearAllHistory() {
+            if (!confirm('⚠️ 确定要清空所有做题历史吗？
+此操作不可恢复！')) return;
+            if (!confirm('再次确认：真的要清空所有历史记录吗？')) return;
+
+            showSync('正在清空历史记录...');
+            try {
+                const res = await giteeAPI(`/repos/${CONFIG.user}/${CONFIG.repo}/contents/data/history?ref=${CONFIG.branch}`);
+
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        hideSync();
+                        alert('暂无历史记录可清空');
+                        return;
+                    }
+                    throw new Error(`获取历史记录失败: ${res.status}`);
+                }
+
+                const files = await res.json();
+                const historyFiles = files.filter(f => f.name.endsWith('.json') && f.name.startsWith('history_'));
+
+                if (historyFiles.length === 0) {
+                    hideSync();
+                    alert('暂无历史记录可清空');
+                    return;
+                }
+
+                let deletedCount = 0;
+                let failedCount = 0;
+
+                for (const file of historyFiles) {
+                    try {
+                        await deleteFile(`data/history/${file.name}`, file.sha);
+                        deletedCount++;
+                    } catch (e) {
+                        console.error('删除失败:', file.name, e);
+                        failedCount++;
+                    }
+                }
+
+                await loadHistory();
+                hideSync();
+
+                if (failedCount === 0) {
+                    alert(`✅ 成功清空 ${deletedCount} 条历史记录！`);
+                } else {
+                    alert(`⚠️ 清空完成：成功 ${deletedCount} 条，失败 ${failedCount} 条`);
+                }
+            } catch (e) {
+                hideSync();
+                alert('❌ 清空失败: ' + e.message);
             }
         }
 
@@ -1211,7 +1346,7 @@
 
             quizData.questions.forEach((q, idx) => {
                 const key = q.stem.slice(0, 50);
-                if (!currentFile.stats[key]) currentFile.stats[key] = { freq: 0, correct: 0, wrong: 0, timeout: 0 };
+                if (!currentFile.stats[key]) currentFile.stats[key] = { freq: 0, correct: 0, wrong: 0, timeout: 0, consecutiveCorrect: 0 };
 
                 const s = currentFile.stats[key];
                 s.freq++;
@@ -1221,10 +1356,19 @@
 
                 if (ans === 'TIMEOUT' || ans === null) {
                     isTimeout = true; timeout++; s.timeout++;
+                    s.consecutiveCorrect = 0; // 超时重置连续正确计数
                 } else if (ans === q.answer) {
                     isCorrect = true; correct++; s.correct++;
+                    s.consecutiveCorrect = (s.consecutiveCorrect || 0) + 1;
+
+                    // 连续做对3次，从错题中移除（重置 wrong 计数）
+                    if (s.consecutiveCorrect >= 3) {
+                        s.wrong = 0;
+                        console.log('题目连续做对3次，从错题中移除:', q.stem.substring(0, 30));
+                    }
                 } else {
                     wrong++; s.wrong++;
+                    s.consecutiveCorrect = 0; // 答错重置连续正确计数
                 }
 
                 quizData.record.questions.push({
@@ -1279,7 +1423,8 @@
                     filterType: quizData.record.filterType,
                     timeLimit: quizData.record.timeLimit,
                     questions: quizData.record.questions.map(q => ({
-                        stem: q.stem.substring(0, 100) + (q.stem.length > 100 ? '...' : ''),
+                        stem: q.stem,
+                        options: q.options,
                         correctAnswer: q.correctAnswer,
                         userAnswer: q.userAnswer,
                         isCorrect: q.isCorrect,
@@ -1575,8 +1720,9 @@
 
                 await uploadFile(filePath, imageData, `上传题目图片 ${fileName}`);
 
-                // 5. 获取图片链接
-                const imageUrl = `https://gitee.com/api/v5/repos/${CONFIG.user}/${CONFIG.repo}/contents/${filePath}?ref=${CONFIG.branch}`;
+                // 5. 获取图片链接（使用 Gitee Raw 链接）
+                const imageUrl = `https://gitee.com/${CONFIG.user}/${CONFIG.repo}/raw/${CONFIG.branch}/${filePath}`;
+                console.log('图片链接:', imageUrl);
 
                 // 6. 发送到 flomo
                 statusDiv.textContent = '正在发送到 flomo...';
@@ -1605,6 +1751,9 @@
 
             console.log('发送到 flomo:', imageUrl);
 
+            // 先等待几秒确保 Gitee 图片可用
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
             const response = await fetch(flomoApiUrl, {
                 method: 'POST',
                 headers: {
@@ -1612,6 +1761,7 @@
                     'Accept': 'application/json'
                 },
                 body: JSON.stringify({
+                    content: '',
                     file_urls: [imageUrl]
                 })
             });
